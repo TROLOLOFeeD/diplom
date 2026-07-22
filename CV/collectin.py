@@ -343,16 +343,6 @@ class Dota2StateCapture:
             x1, y1 = max(0, adj_x - min_x), max(0, adj_y - min_y)
             x2, y2 = min(w, adj_x - min_x + rw), min(h, adj_y - min_y + rh)
             crops.append(frame[y1:y2, x1:x2])
-            # В конце _capture_safe, перед return crops:
-            debug_frame = frame.copy()
-            for rx, ry, rw, rh in regions:
-                adj_x, adj_y = rx + dx, ry + dy
-                x1, y1 = max(0, adj_x - min_x), max(0, adj_y - min_y)
-                cv2.rectangle(debug_frame, (x1, y1), (x1 + rw, y1 + rh), (0, 0, 255), 2)
-
-            cv2.imshow("DEBUG_CROPS", debug_frame)
-            cv2.waitKey(0)  # Нажмите любую клавишу для продолжения
-            cv2.destroyAllWindows()
         return crops
 
     def _queue_save(self, dtype: str, crops: List[np.ndarray], hero_idx: int = -1, timestamp: int = None):
@@ -512,7 +502,7 @@ if __name__ == "__main__":
         search_engine=search_engine,
         classification_threshold=75.0,
         capture_delay_ms=15.0,
-        item_crop_pixels=5,
+        item_crop_pixels=5,  # 🔥 НОВОЕ: обрезаем 5px для рядов с высотой 45
         on_items_captured=on_items_detected
     )
 
