@@ -14,6 +14,8 @@ from typing import List, Tuple, Callable, Optional
 from PIL import Image
 import imagehash
 
+from state_manager import GameStateManager 
+
 # =========================
 # 1. DHASH ENGINE
 # =========================
@@ -409,7 +411,8 @@ class Dota2StateCapture:
         print(f"💾 Сохранено {len(crops)} кадров в: {folder}")
         
         if self.on_items_captured and dtype == "items":
-            self.on_items_captured(hero_idx, classnames)
+            # Пока передаем "Unknown" и 1, но структура готова к расширению
+            self.on_items_captured(hero_idx, classnames, hero_name="Unknown", level=1)
 
     def capture_heroes_once(self) -> List[np.ndarray]:
         """Сбор героев при инициализации"""
@@ -478,16 +481,37 @@ if __name__ == "__main__":
     else:
         print("[!] ВНИМАНИЕ: Эталонные хеши не загружены. Классификация будет пропущена")
         search_engine = None
-
+        
+    # Инициализация менеджера состояний и метрики достоверности
+    state_manager = GameStateManager()
+    print("GameStateManager инициализирован")
+    
     HERO_REGIONS = [(545 + i*62, 5, 62, 35) for i in range(5)] + [(1064 + i*62, 5, 62, 35) for i in range(5)]
     ITEM_REGIONS = [(1143 + i*65, 945, 65, 45) for i in range(3)] + \
                    [(1143 + i*65, 995, 65, 45) for i in range(3)] + \
                    [(1143 + i*65, 1045, 65, 30) for i in range(3)]
 
-    def on_items_detected(hero_idx, item_classnames):
-        print(f"\n🎯 Итог для героя #{hero_idx}:")
+    # 🔥 НОВОЕ: Обновленная функция-колбэк
+    def on_items_detected(hero_idx: int, item_classnames: list, hero_name: str = "Unknown", level: int = 1):
+        print(f"\n🎯 Итог для игрока #{hero_idx} (Герой: {hero_name}, Ур: {level}):")
+        
+        # Фильтруем "unknown_XX" для более чистого вывода инвентаря
+        clean_inventory = [name.split('_')[0] for name in item_classnames if not name.startswith("unknown")]
+        
         for i, name in enumerate(item_classnames):
             print(f"   Слот {i}: {name}")
+        
+        # 🔥 НОВОЕ: Обновляем состояние и запускаем таймер достоверности
+        state_manager.update_player(
+            player_id=hero_idx,          # hero_idx (0-9) идеально подходит как player_id
+            inventory=clean_inventory,   # Список распознанных предметов
+            hero_name=hero_name,         # Имя героя (пока заглушка)
+            level=level                  # Уровень героя (пока заглушка)
+        )
+        
+        # Демонстрация работы метрики достоверности
+        current_reliability = state_manager.players[hero_idx].get_reliability()
+        print(f"Текущая достоверность данных: {current_reliability:.1%} (обновлено только что)")
         print()
 
     print("\n" + "="*80)
