@@ -1,15 +1,16 @@
 import zmq
 import json
+import time
 import numpy as np
-from dataset.state_manager import GameStateManager
+from CV.state_manager import GameStateManager
 from model.onnx_inference import ONNXInferencer
-from dataset.builder import DotaDataProcessor # Ваш препроцессинг
+from model.model import DotaDataProcessor
 
 class DataPipeline:
-    def __init__(self):
+    def __init__(self, heroes_json: str = "dataset/heroes.json", items_json: str = "dataset/items.json"):
         self.state_manager = GameStateManager()
         self.inferencer = ONNXInferencer()
-        self.processor = DotaDataProcessor()
+        self.processor = DotaDataProcessor(heroes_json, items_json)
         
         # Настройка ZeroMQ PUB сокета
         self.context = zmq.Context()
@@ -17,6 +18,38 @@ class DataPipeline:
         # Привязываем к порту. UI будет подключаться к tcp://localhost:5555
         self.socket.bind("tcp://*:5555")
         print("[Pipeline] ZeroMQ PUB socket bound to tcp://*:5555")
+    
+    def encode_player_state(self, player_state: dict) -> np.ndarray:
+        """
+        Преобразует состояние игрока в вектор признаков для ONNX модели.
+        Возвращает массив формы (1, input_dim) где input_dim зависит от архитектуры модели.
+        """
+        inventory = player_state.get("inventory", [])
+        hero_name = player_state.get("hero_name", "unknown")
+        level = player_state.get("level", 1)
+        
+        # Создаем фиктивные признаки для демонстрации
+        # В реальности здесь должна быть логика маппинга предметов и героев на ID
+        item_ids = []
+        for item in inventory[:6]:  # Берем максимум 6 предметов
+            # Пытаемся найти предмет в словаре, иначе используем 0
+            item_idx = self.processor.item_to_idx.get(item, 0)
+            item_ids.append(item_idx)
+        
+        # Дополняем до 6 предметов нулями
+        while len(item_ids) < 6:
+            item_ids.append(0)
+        
+        # Получаем ID героя (если имя не найдено, используем 0)
+        # В реальности нужен маппинг hero_name -> hero_id
+        hero_id = 0  # Заглушка
+        
+        # Формируем простой вектор признаков [hero_id, level, item_0, ..., item_5]
+        # Это упрощенная версия - реальная модель может требовать более сложную структуру
+        features = np.array([hero_id, level] + item_ids, dtype=np.float32)
+        
+        # Добавляем размерность batch: (batch_size=1, features)
+        return features.reshape(1, -1)
 
     def _calculate_global_reliability(self) -> float:
         """
@@ -39,8 +72,8 @@ class DataPipeline:
         self.state_manager.update_player(player_id, raw_inventory, hero, level)
         
         # 2. Подготовка признаков для модели
-        player_state = self.state_manager.players[player_id]
-        features = self.processor.encode_state(player_state) # Ваш метод векторизации
+        player_state = self.state_manager.players[player_id].to_dict()
+        features = self.encode_player_state(player_state)
         
         # 3. ONNX Инференс
         predictions = self.inferencer.predict(features)
